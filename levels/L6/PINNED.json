@@ -1,0 +1,12 @@
+{
+ "repository": "https://github.com/braxtonmensah/silicyte-bio-evals-sample",
+ "commit": "d330f6a02d533a7596213a0a0b5b7673cde34fe0",
+ "grader": "tasks/t3_go_enrichment/grade.py",
+ "sha256": {
+  "tasks/t3_go_enrichment/grade.py": "afdd1fe795f2906f8e09852e9d5d649b9eccc3dc36bfa0197a527f097e3adadb",
+  "evalkit/strictjson.py": "46876c6e0d2bb49864b6a5196c9c1cb9b5e4331f2115047791e30939642ce763",
+  "evalkit/__init__.py": "703b4cde5af7e9972d363587a8b5ed2afee95bb17e1e9b9c9af370fe3c502d76",
+  "tasks/t3_go_enrichment/key.json": "6b23f764189ca9b38d3c8c406915105cabd3355bb924d552a78ceef134f8af60"
+ },
+ "note": "tasks/t3_go_enrichment/key.json is the sample's PUBLIC key; L6 uses a different, private key (repository secret L6_KEY_B64). The public key is used only as a must-fail control."
+}

@@ -1,0 +1,9 @@
+{
+ "epitope": [
+  {"chain": "C", "resnum": 557, "resname": "GLU", "min_distance": 3.12},
+  {"chain": "C", "resnum": 561, "resname": "ASP", "min_distance": 2.87},
+  {"chain": "C", "resnum": 570, "resname": "PHE", "min_distance": 3.65},
+  {"chain": "C", "resnum": 593, "resname": "LYS", "min_distance": 3.01},
+  {"chain": "C", "resnum": 597, "resname": "GLN", "min_distance": 3.48}
+ ]
+}

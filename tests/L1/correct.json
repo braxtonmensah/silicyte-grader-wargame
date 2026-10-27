@@ -1,0 +1,11 @@
+{
+ "epitope": [
+  {"chain": "C", "resnum": 558, "resname": "GLU", "min_distance": 3.33},
+  {"chain": "C", "resnum": 559, "resname": "PRO", "min_distance": 3.71},
+  {"chain": "C", "resnum": 572, "resname": "ASP", "min_distance": 2.69},
+  {"chain": "C", "resnum": 579, "resname": "TYR", "min_distance": 3.05},
+  {"chain": "C", "resnum": 592, "resname": "LYS", "min_distance": 2.94},
+  {"chain": "C", "resnum": 593, "resname": "PHE", "min_distance": 3.58},
+  {"chain": "C", "resnum": 595, "resname": "GLN", "min_distance": 3.21}
+ ]
+}

@@ -1,0 +1,9 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/braxtonmensah/silicyte-grader-wargame/schema/answer.schema.json",
+ "title": "Wargame answer file",
+ "description": "Every level's answer is one JSON object. Level-specific checks are the graders' job, not the schema's.",
+ "type": "object",
+ "minProperties": 1,
+ "maxProperties": 16
+}

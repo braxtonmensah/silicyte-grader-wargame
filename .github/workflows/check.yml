@@ -1,0 +1,96 @@
+name: check
+
+# Untrusted stage. Runs on every submission pull request with a read-only token and no secrets.
+# It reads the PR's files only as data (git diff / cat-file) and grades L0 to L5 with graders from the BASE commit.
+# Nothing from the pull request is executed. L6 is graded later, in record.yml, which holds the key.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out trusted code from the base commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted
+          persist-credentials: false
+
+      - name: Fetch the pull request as data (never executed)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr
+          fetch-depth: 0
+          persist-credentials: false
+          sparse-checkout: submissions
+          sparse-checkout-cone-mode: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the pinned schema validator
+        run: python -m pip install --no-cache-dir jsonschema==4.23.0
+
+      - name: Gate (paths, size, JSON, schema) and grade L0 to L5
+        id: grade
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          mkdir -p verdict
+          set +e
+          python -I trusted/tools/gate.py --repo pr --base "$BASE_SHA" --head "$HEAD_SHA" --author "$AUTHOR" --out gate
+          gate_code=$?
+          set -e
+          level=$(python -I -c 'import json; print(json.load(open("gate/gate.json"))["level"] or "")')
+          if [ "$gate_code" = "0" ] && [ "$level" != "L6" ]; then
+            python -I trusted/tools/grade_submission.py --level "$level" --answer gate/answer.json --out grade.json
+          else
+            echo '{}' > grade.json
+          fi
+          python -I - <<'PY'
+          import json, os
+          gate = json.load(open("gate/gate.json"))
+          grade = json.load(open("grade.json"))
+          verdict = {"pr": int(os.environ["PR_NUMBER"]), "head_sha": os.environ["HEAD_SHA"], "author": os.environ["AUTHOR"],
+                     "gate": gate, "grade": grade,
+                     "note": "Advisory only. record.yml re-derives every field from git objects with trusted code."}
+          if gate["accepted"] and gate["level"] == "L6":
+              verdict["grade"] = {"level": "L6", "kind": "deferred", "note": "graded in record.yml with the private key"}
+          json.dump(verdict, open("verdict/verdict.json", "w"), indent=1, sort_keys=True)
+          print(json.dumps(verdict, indent=1, sort_keys=True))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
+              if not gate["accepted"]:
+                  fh.write(f"## REJECTED before grading\n\n{gate['reason']}\n")
+              elif gate["level"] == "L6":
+                  fh.write("## L6 accepted for grading\n\nThe private-key grade is posted by record.yml as a PR comment.\n")
+              else:
+                  fh.write(f"## {gate['level']}: {verdict['grade']['kind']}\n\ngrader.py {'PASS' if verdict['grade']['grader_pass'] else 'FAIL'}, "
+                           f"grader_fixed.py {'PASS' if verdict['grade']['fixed_pass'] else 'FAIL'}\n")
+          PY
+          echo "gate_code=$gate_code" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the verdict
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verdict
+          path: verdict/verdict.json
+          retention-days: 30
+
+      - name: Fail the check when the PR was rejected before grading
+        if: steps.grade.outputs.gate_code != '0'
+        run: |
+          echo "Rejected: $(python -I -c 'import json; print(json.load(open("gate/gate.json"))["reason"])')"
+          exit 1

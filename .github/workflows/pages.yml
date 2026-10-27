@@ -1,0 +1,49 @@
+name: pages
+
+# Renders scoreboard.json into the GitHub Pages scoreboard. record.yml dispatches this after each recorded verdict.
+
+on:
+  push:
+    branches: [main]
+    paths: [scoreboard.json, tools/render_scoreboard.py, schema/scoreboard.schema.json, .github/workflows/pages.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --no-cache-dir jsonschema==4.23.0
+      - name: Render the scoreboard
+        run: |
+          python -I tools/render_scoreboard.py scoreboard.json _site
+          cp scoreboard.json _site/scoreboard.json
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

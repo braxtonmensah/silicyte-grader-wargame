@@ -1,0 +1,45 @@
+name: l6-key
+
+# Maintainer-only, run by hand. Builds the private L6 key with the eval sample's own t3 builder at the pinned commit,
+# on levels/L6/study_genes.txt, and uploads it ENCRYPTED to the maintainer's public key (levels/L6/build_pubkey.pem):
+# a random 256-bit AES key encrypts the key file, and RSA-OAEP wraps the AES key. Only the maintainer can decrypt it;
+# the clear key never reaches a log or an artifact. The maintainer then stores it as the repository secret that record.yml reads.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/checkout@v4
+        with:
+          repository: braxtonmensah/silicyte-bio-evals-sample
+          ref: d330f6a02d533a7596213a0a0b5b7673cde34fe0
+          path: .sample
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: python -I tools/verify_pinned.py .sample
+      - name: Build, then encrypt
+        run: |
+          umask 077
+          K="$RUNNER_TEMP/l6"
+          python -I tools/build_l6_key.py .sample "$K"
+          mkdir -p enc
+          openssl rand -hex 32 > "$K/pass.txt"
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -in "$K/key.json" -out enc/key.json.enc -pass file:"$K/pass.txt"
+          openssl pkeyutl -encrypt -pubin -inkey levels/L6/build_pubkey.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in "$K/pass.txt" -out enc/pass.bin
+          shred -u "$K/key.json" "$K/pass.txt"
+          ls -l enc
+      - uses: actions/upload-artifact@v4
+        with:
+          name: l6-key-encrypted
+          path: enc/
+          retention-days: 1

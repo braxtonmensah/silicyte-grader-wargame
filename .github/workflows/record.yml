@@ -1,0 +1,66 @@
+name: record
+
+# Trusted stage. Triggered when a check run finishes. Runs code from main only (never the PR head), re-derives the
+# verdict from git objects read as data, grades L6 with the private key, comments on the PR, and appends CI verdicts
+# to scoreboard.json and attempts.json.
+
+on:
+  workflow_run:
+    workflows: [check]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: record
+  cancel-in-progress: false
+
+jobs:
+  record:
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out main (trusted code and the scoreboard)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Check out the eval sample at the pinned commit (production L6 grader)
+        uses: actions/checkout@v4
+        with:
+          repository: braxtonmensah/silicyte-bio-evals-sample
+          ref: d330f6a02d533a7596213a0a0b5b7673cde34fe0
+          path: .sample
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the pinned schema validator
+        run: python -m pip install --no-cache-dir jsonschema==4.23.0
+
+      - name: Verify the pinned grader by SHA-256
+        run: python -I tools/verify_pinned.py .sample
+
+      - name: Download the check run's verdict (untrusted; only the PR number is used, then verified)
+        uses: actions/download-artifact@v4
+        with:
+          name: verdict
+          path: ${{ runner.temp }}/untrusted
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Re-derive, grade, comment and record
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WF_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          WF_RUN_URL: ${{ github.event.workflow_run.html_url }}
+          SAMPLE_DIR: ${{ github.workspace }}/.sample
+          L6_KEY_B64: ${{ secrets.L6_KEY_B64 }}
+        run: python -I tools/record.py "$RUNNER_TEMP/untrusted"

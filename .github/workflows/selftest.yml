@@ -1,0 +1,99 @@
+name: selftest
+
+# The acceptance tests. Runs on pushes to main and on demand, never on pull requests, so the job that holds the
+# L6 key only ever runs trusted code from main.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: [scoreboard.json, attempts.json, HALL_OF_FAME.md, regressions/**]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  levels:
+    name: "1. reference exploits and correct answers, L0 to L5"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: python -I tests/run_levels.py
+
+  gate:
+    name: "3. gate rejects workflow or grader edits, 2 MB files, invalid JSON"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: python -m pip install --no-cache-dir jsonschema==4.23.0
+      - run: bash tests/gate_fixtures.sh
+
+  static:
+    name: "4 and 5. permissions and secret placement (yq)"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - run: yq --version
+      - run: bash tests/static_checks.sh
+
+  scoreboard:
+    name: "6. scoreboard schema and Pages render, empty and current"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: python -m pip install --no-cache-dir jsonschema==4.23.0
+      - name: Empty scoreboard renders
+        run: |
+          echo '{"entries": []}' > "$RUNNER_TEMP/empty.json"
+          python -I tools/render_scoreboard.py "$RUNNER_TEMP/empty.json" "$RUNNER_TEMP/site_empty"
+          grep -q "No verified results yet" "$RUNNER_TEMP/site_empty/index.html"
+      - name: Current scoreboard validates and renders
+        run: python -I tools/render_scoreboard.py scoreboard.json "$RUNNER_TEMP/site_now"
+      - name: A malformed scoreboard is refused
+        run: |
+          echo '{"entries": [{"handle": "x"}]}' > "$RUNNER_TEMP/bad.json"
+          if python -I tools/render_scoreboard.py "$RUNNER_TEMP/bad.json" "$RUNNER_TEMP/site_bad"; then exit 1; fi
+
+  l6:
+    name: "2 and 5. L6 controls and secret-leak scan (trusted, holds the key)"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/checkout@v4
+        with:
+          repository: braxtonmensah/silicyte-bio-evals-sample
+          ref: d330f6a02d533a7596213a0a0b5b7673cde34fe0
+          path: .sample
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: python -I tools/verify_pinned.py .sample
+      - name: Must-fail controls and must-pass variations on L6
+        env:
+          L6_KEY_B64: ${{ secrets.L6_KEY_B64 }}
+          SAMPLE_DIR: ${{ github.workspace }}/.sample
+        run: |
+          if [ -z "$L6_KEY_B64" ]; then echo "L6_KEY_B64 is not set"; exit 1; fi
+          python -I tests/l6_controls.py
+      - name: No L6 key material in check.yml logs or artifacts
+        env:
+          L6_KEY_B64: ${{ secrets.L6_KEY_B64 }}
+          GH_TOKEN: ${{ github.token }}
+        run: bash tests/secret_leak.sh
