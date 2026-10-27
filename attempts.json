@@ -1,3 +1,16 @@
 {
- "attempts": []
+ "attempts": [
+  {
+   "check_run_url": "https://github.com/braxtonmensah/silicyte-grader-wargame/actions/runs/40565794345",
+   "handle": "braxtonmensah",
+   "head_sha": "70b3e98bf280b6f35269587f7a7b93c8c9db5110",
+   "level": null,
+   "maintainer_test": true,
+   "outcome": "rejected",
+   "pr": 2,
+   "reason": "touches paths outside submissions/braxtonmensah/: ['.github/workflows/fixture-notes.txt']",
+   "run_url": "https://github.com/braxtonmensah/silicyte-grader-wargame/actions/runs/40565834824",
+   "utc": "2026-10-27T19:05:03Z"
+  }
+ ]
 }
