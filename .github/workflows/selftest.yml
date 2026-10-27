@@ -24,6 +24,8 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
       - run: python -I tests/run_levels.py
+      - name: Every tool and grader compiles (record.py runs only on real PRs)
+        run: python -I -m py_compile tools/*.py levels/*/*.py wargame/*.py tests/*.py
 
   gate:
     name: "3. gate rejects workflow or grader edits, 2 MB files, invalid JSON"
