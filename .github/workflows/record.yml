@@ -14,9 +14,6 @@ permissions:
   pull-requests: write
   actions: write
 
-concurrency:
-  group: record
-  cancel-in-progress: false
 
 jobs:
   record:

@@ -13,11 +13,13 @@ import base64
 import datetime
 import json
 import os
+import random
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
@@ -101,9 +103,9 @@ def main():
     attempt = {"handle": author, "pr": pr_number, "head_sha": head_sha, "run_url": RUN_URL,
                "check_run_url": os.environ["WF_RUN_URL"], "utc": now_utc(), "level": level,
                "maintainer_test": author.lower() == OWNER.lower()}
-    sgx = None
     if not ok:
         attempt.update(outcome="rejected", reason=reason)
+        v = {"level_passed": False, "kind": "rejected"}
         body = f"**REJECTED** before grading: {reason}\n\nRules: one file, `submissions/{author}/<level>/answer.json`, at most 1 MB, one JSON object."
     else:
         tmp = tempfile.mkdtemp(prefix="answer-")
@@ -117,15 +119,14 @@ def main():
             if v["kind"] == "solve":
                 body = "**PASS L6** (solve): the production grader and the referee both PASS."
             elif v["kind"] == "exploit":
-                sgx = next_sgx_id()
-                body = (f"**PASS L6** (exploit): the production grader PASSES an answer the referee FAILS. "
-                        f"Assigned **{sgx}** (Silicyte grader exploit ID, not a CVE). The maintainer will confirm it, "
-                        f"open a draft security advisory and add a regression case to the sample's grader.")
+                body = ("**PASS L6** (exploit): the production grader PASSES an answer the referee FAILS. "
+                        "Assigned **{sgx}** (Silicyte grader exploit ID, not a CVE). The maintainer will confirm it, "
+                        "open a draft security advisory and add a regression case to the sample's grader.")
             else:
                 body = "**FAIL L6**. (For L6 the verdict carries no reasons, so it cannot leak the private key.)"
         else:
             if v["kind"] == "exploit":
-                body = (f"**PASS {level}** (exploit verified): `grader.py` PASS, `grader_fixed.py` FAIL.")
+                body = f"**PASS {level}** (exploit verified): `grader.py` PASS, `grader_fixed.py` FAIL."
             elif v["kind"] == "correct":
                 body = (f"**FAIL {level}**: this is a correct answer (both graders PASS). The level asks for an answer "
                         f"`grader.py` PASSES and `grader_fixed.py` FAILS.")
@@ -133,12 +134,27 @@ def main():
                 body = f"**FAIL {level}**: `grader.py` {'PASS' if v['grader_pass'] else 'FAIL'}, `grader_fixed.py` {'PASS' if v['fixed_pass'] else 'FAIL'}."
                 if v.get("grader_reasons"):
                     body += f"\n\n`grader.py` said: {'; '.join(v['grader_reasons'])[:300]}"
+
+    # Write the record. Several record runs can finish at once, so each try starts from the latest main and
+    # re-applies the update; a rejected push (someone else got there first) just means try again.
+    sh("git", "config", "user.name", "github-actions[bot]")
+    sh("git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com")
+    sgx, note = None, ""
+    for i in range(8):
+        sh("git", "fetch", "--no-tags", "origin", "main")
+        sh("git", "reset", "--hard", "origin/main")
+        sgx, note = None, ""
+        rec = dict(attempt)
         if v["level_passed"]:
             board = load(os.path.join(ROOT, "scoreboard.json"), {"entries": []})
             kind = "exploit" if v["kind"] == "exploit" else "solve"
             dup = any(e["handle"].lower() == author.lower() and e["level"] == level and e["kind"] == kind
                       for e in board["entries"])
-            if not dup:
+            if dup:
+                note = "\n\nAlready on the scoreboard for this level; not added twice."
+            else:
+                if level == "L6" and kind == "exploit":
+                    sgx = next_sgx_id()
                 row = {"handle": author, "level": level, "kind": kind, "pr": pr_number, "run_url": RUN_URL,
                        "check_run_url": os.environ["WF_RUN_URL"], "utc": attempt["utc"], "head_sha": head_sha,
                        "maintainer_test": attempt["maintainer_test"]}
@@ -146,45 +162,37 @@ def main():
                     row["sgx_id"] = sgx
                 board["entries"].append(row)
                 dump(os.path.join(ROOT, "scoreboard.json"), board)
-                body += "\n\nRecorded in [scoreboard.json](../blob/main/scoreboard.json)."
-            else:
-                body += "\n\nAlready on the scoreboard for this level; not added twice."
+                note = "\n\nRecorded in [scoreboard.json](../blob/main/scoreboard.json)."
+        if sgx:
+            with open(os.path.join(ROOT, "HALL_OF_FAME.md"), "a", encoding="utf-8", newline="\n") as fh:
+                fh.write(f"- {sgx} (Silicyte grader exploit ID, not a CVE): @{author}, L6, PR #{pr_number}, {RUN_URL}\n")
+            os.makedirs(os.path.join(ROOT, "regressions"), exist_ok=True)
+            with open(os.path.join(ROOT, "regressions", f"{sgx}.json"), "wb") as fh:
+                fh.write(raw)
+            rec["sgx_id"] = sgx
+        attempts = load(os.path.join(ROOT, "attempts.json"), {"attempts": []})
+        attempts["attempts"].append(rec)
+        dump(os.path.join(ROOT, "attempts.json"), attempts)
+        sh("git", "add", "-A", "scoreboard.json", "attempts.json", "HALL_OF_FAME.md", "regressions")
+        sh("git", "commit", "-m", f"record: PR #{pr_number} {level or ''} {attempt['outcome']}")
+        if subprocess.run(["git", "push", "origin", "HEAD:main"], cwd=ROOT).returncode == 0:
+            break
+        time.sleep(2 + 3 * i + random.random() * 3)
+    else:
+        raise RuntimeError("could not push the record commit after 8 tries")
+
     if sgx:
-        with open(os.path.join(ROOT, "HALL_OF_FAME.md"), "a", encoding="utf-8", newline="\n") as fh:
-            fh.write(f"- {sgx} (Silicyte grader exploit ID, not a CVE): @{author}, L6, PR #{pr_number}, {RUN_URL}\n")
-        os.makedirs(os.path.join(ROOT, "regressions"), exist_ok=True)
-        with open(os.path.join(ROOT, "regressions", f"{sgx}.json"), "wb") as fh:
-            fh.write(raw)
         advisory = {"summary": f"{sgx}: L6 production grader accepts an answer the referee rejects",
                     "description": f"Found by @{author} in PR #{pr_number}. CI run: {RUN_URL}. Regression case: regressions/{sgx}.json",
                     "severity": "low",
                     "vulnerabilities": [{"package": {"ecosystem": "other", "name": "silicyte-bio-evals-sample"}}]}
         # Best effort: the workflow token may lack permission to draft advisories; the comment says the maintainer does it.
-        adv = subprocess.run(["gh", "api", "-X", "POST", f"repos/{REPO}/security-advisories", "--input", "-"],
-                             input=json.dumps(advisory), capture_output=True, text=True, cwd=ROOT)
-        attempt["advisory_draft_created"] = adv.returncode == 0
-        attempt["sgx_id"] = sgx
-    attempts = load(os.path.join(ROOT, "attempts.json"), {"attempts": []})
-    attempts["attempts"].append(attempt)
-    dump(os.path.join(ROOT, "attempts.json"), attempts)
-
+        subprocess.run(["gh", "api", "-X", "POST", f"repos/{REPO}/security-advisories", "--input", "-"],
+                       input=json.dumps(advisory), capture_output=True, text=True, cwd=ROOT)
+    body = body.replace("{sgx}", sgx or "an SGX ID once confirmed") + note
     body += f"\n\nVerified by [this run]({RUN_URL}). CI never executes submitted code. The maintainer, not CI, merges or closes this PR; the scoreboard records the CI verdict either way."
     sh("gh", "pr", "comment", str(pr_number), "--repo", REPO, "--body-file", "-", input_text=body)
-
-    sh("git", "add", "scoreboard.json", "attempts.json", "HALL_OF_FAME.md")
-    if os.path.isdir(os.path.join(ROOT, "regressions")):
-        sh("git", "add", "regressions")
-    if sh("git", "diff", "--cached", "--name-only").strip():
-        sh("git", "config", "user.name", "github-actions[bot]")
-        sh("git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com")
-        sh("git", "commit", "-m", f"record: PR #{pr_number} {level or ''} {attempt['outcome']}")
-        for _ in range(3):
-            if subprocess.run(["git", "push", "origin", "HEAD:main"], cwd=ROOT).returncode == 0:
-                break
-            sh("git", "pull", "--rebase", "origin", "main")
-        else:
-            raise RuntimeError("could not push the record commit")
-        subprocess.run(["gh", "workflow", "run", "pages.yml", "--repo", REPO, "--ref", "main"], cwd=ROOT)
+    subprocess.run(["gh", "workflow", "run", "pages.yml", "--repo", REPO, "--ref", "main"], cwd=ROOT)
     print(json.dumps({"pr": pr_number, "level": level, "outcome": attempt["outcome"], "sgx": sgx}))
 
 
