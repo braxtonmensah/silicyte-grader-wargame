@@ -1,3 +1,15 @@
 {
- "entries": []
+ "entries": [
+  {
+   "check_run_url": "https://github.com/braxtonmensah/silicyte-grader-wargame/actions/runs/40565787721",
+   "handle": "braxtonmensah",
+   "head_sha": "c0ac3923a1897c73049a24cb4f441617046299a7",
+   "kind": "exploit",
+   "level": "L0",
+   "maintainer_test": true,
+   "pr": 1,
+   "run_url": "https://github.com/braxtonmensah/silicyte-grader-wargame/actions/runs/40566119571",
+   "utc": "2026-10-27T19:06:55Z"
+  }
+ ]
 }
