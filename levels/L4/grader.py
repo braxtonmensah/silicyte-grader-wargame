@@ -9,14 +9,18 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
 from wargame.common import load_key, main, verdict  # noqa: E402
+from wargame.strictjson import AnswerError, _no_duplicate_keys  # noqa: E402
 
 REL_TOL = 1e-4
 
 
 def grade(answer_path, key_dir=HERE):
     key = load_key(key_dir)
-    with open(answer_path, encoding="utf-8") as fh:
-        ans = json.load(fh)
+    try:
+        with open(answer_path, encoding="utf-8") as fh:
+            ans = json.load(fh, object_pairs_hook=_no_duplicate_keys)
+    except AnswerError as exc:
+        return verdict(False, [f"rejected: {exc}"])
     if type(ans) is not dict or set(ans) != {"N", "n", "m", "terms"} or type(ans["terms"]) is not list:
         return verdict(False, ["answer needs exactly N, n, m and terms"])
     if any(type(ans[f]) is not int or ans[f] != key[f] for f in ("N", "n", "m")):

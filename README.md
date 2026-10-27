@@ -75,7 +75,9 @@ python levels/L2/grader.py my_answer.json; python levels/L2/grader_fixed.py my_a
 [selftest.yml](.github/workflows/selftest.yml) runs on every push to main:
 
 1. For L0 to L5, the reference exploit in `tests/` PASSES `grader.py` and FAILS `grader_fixed.py`, and the correct
-   answer PASSES both. These are Silicyte's own exploits and are not on the scoreboard.
+   answer PASSES both. These are Silicyte's own exploits and are not on the scoreboard. Tricks outside each level's
+   documented hole (duplicate JSON keys, extra keys, a stray NaN token) must not score as an exploit
+   ([tests/unintended/](tests/unintended/)).
 2. L6, in a trusted job with the key: an empty answer, a constant answer, a shuffled key and the sample's public key
    copied verbatim all FAIL; the sample's 11 benign variations of correct answers PASS.
 3. The gate rejects fixture branches that edit a workflow or a grader, carry a 2 MB file, or hold invalid JSON.

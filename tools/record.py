@@ -39,6 +39,11 @@ def sh(*cmd, check=True, input_text=None):
     return p.stdout
 
 
+def code(text):
+    """Show untrusted text (paths, loader messages) as inline code, so it cannot @mention, link or format."""
+    return "`" + str(text).replace("`", "'").replace("\n", " ").replace("\r", " ")[:300] + "`"
+
+
 def gh_json(path):
     return json.loads(sh("gh", "api", path))
 
@@ -106,7 +111,7 @@ def main():
     if not ok:
         attempt.update(outcome="rejected", reason=reason)
         v = {"level_passed": False, "kind": "rejected"}
-        body = f"**REJECTED** before grading: {reason}\n\nRules: one file, `submissions/{author}/<level>/answer.json`, at most 1 MB, one JSON object."
+        body = f"**REJECTED** before grading: {code(reason)}\n\nRules: one file, `submissions/{author}/<level>/answer.json`, at most 1 MB, one JSON object."
     else:
         tmp = tempfile.mkdtemp(prefix="answer-")
         answer_path = os.path.join(tmp, "answer.json")
@@ -133,7 +138,7 @@ def main():
             else:
                 body = f"**FAIL {level}**: `grader.py` {'PASS' if v['grader_pass'] else 'FAIL'}, `grader_fixed.py` {'PASS' if v['fixed_pass'] else 'FAIL'}."
                 if v.get("grader_reasons"):
-                    body += f"\n\n`grader.py` said: {'; '.join(v['grader_reasons'])[:300]}"
+                    body += f"\n\n`grader.py` said: {code('; '.join(v['grader_reasons']))}"
 
     # Write the record. Several record runs can finish at once, so each try starts from the latest main and
     # re-applies the update; a rejected push (someone else got there first) just means try again.
