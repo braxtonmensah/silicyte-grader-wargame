@@ -162,7 +162,7 @@ def main():
                     row["sgx_id"] = sgx
                 board["entries"].append(row)
                 dump(os.path.join(ROOT, "scoreboard.json"), board)
-                note = "\n\nRecorded in [scoreboard.json](../blob/main/scoreboard.json)."
+                note = f"\n\nRecorded in [scoreboard.json]({SERVER}/{REPO}/blob/main/scoreboard.json) and on the [scoreboard page](https://braxtonmensah.github.io/silicyte-grader-wargame/)."
         if sgx:
             with open(os.path.join(ROOT, "HALL_OF_FAME.md"), "a", encoding="utf-8", newline="\n") as fh:
                 fh.write(f"- {sgx} (Silicyte grader exploit ID, not a CVE): @{author}, L6, PR #{pr_number}, {RUN_URL}\n")
