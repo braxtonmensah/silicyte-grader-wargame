@@ -1,6 +1,6 @@
 name: check
 
-# Untrusted stage. Runs on every submission pull request with a read-only token and no secrets.
+# Untrusted stage. Runs on every submission pull request with a read-only token and no repository secrets at all;
 # It reads the PR's files only as data (git diff / cat-file) and grades L0 to L5 with graders from the BASE commit.
 # Nothing from the pull request is executed. L6 is graded later, in record.yml, which holds the key.
 
